@@ -60,6 +60,9 @@ final class ExpensiveRenderer {
 
     deinit { timer?.invalidate() }
 
+    /// Live one-line status exposed through the placeholder's accessibility bridge.
+    var accessibilityStatus: String { "live renderer, \(ticks) ticks, spinning" }
+
     func layout() {
         let b = rootLayer.bounds
         guard b.width > 0, b.height > 0 else { return }

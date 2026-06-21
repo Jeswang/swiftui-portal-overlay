@@ -48,6 +48,42 @@ final class PortalAnchorNSView: NSView {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    // MARK: - Accessibility bridge
+    //
+    // The overlay content lives under NSThemeFrame, divorced from its logical
+    // position — so by default VoiceOver finds it out of reading order (or not at
+    // all, since the placeholder is empty). This placeholder IS in the right spot
+    // in the SwiftUI/AX tree, so we make it ADOPT the content: VoiceOver reaches
+    // it in order and finds the portal content's element here, framed on-screen
+    // where the content actually is. (The overlay is marked non-accessible in
+    // PortalManager so it isn't also exposed out of place.)
+
+    private lazy var contentElement: NSAccessibilityElement = {
+        let e = NSAccessibilityElement()
+        e.setAccessibilityRole(.staticText)
+        e.setAccessibilityLabel("Portal renderer")
+        e.setAccessibilityParent(self)
+        return e
+    }()
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityLabel() -> String? { "Portal content region" }
+
+    override func accessibilityChildren() -> [Any]? {
+        // Updated on demand (VoiceOver reads when focused), so value + frame are
+        // always current even after scrolling.
+        contentElement.setAccessibilityValue(PortalManager.shared.contentAccessibilityValue)
+        contentElement.setAccessibilityFrame(contentScreenFrame())
+        return [contentElement]
+    }
+
+    /// The on-screen rect the content occupies (so the VoiceOver cursor lands on it).
+    private func contentScreenFrame() -> NSRect {
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
+    }
 }
 
 struct PortalAnchor: NSViewRepresentable {

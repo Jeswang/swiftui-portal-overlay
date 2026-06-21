@@ -65,6 +65,30 @@ composition and inherit manual bookkeeping:
   punched transparent via a mask) — more faithful to the classic map-view trick,
   and noted here as the next step.
 - **No SwiftUI transitions/animations** apply to the content.
+- **Accessibility is wrong by default** — see below.
+
+## Accessibility bridge
+
+macOS's accessibility tree follows the *view hierarchy*. Because the overlay
+lives under `NSThemeFrame` (not in the placeholder's logical spot), VoiceOver
+finds the content out of reading order — and the placeholder itself is an empty
+hole in the tree. So a11y must be bridged back manually:
+
+- The overlay is marked **non-accessible** (`setAccessibilityElement(false)`) so
+  it isn't exposed out of place at the window-frame level.
+- `PortalAnchor` — which *is* in the right logical position — **adopts** the
+  content: it reports itself as a group and vends an `NSAccessibilityElement` for
+  the content, framed (in screen coordinates) where the content actually is. So
+  VoiceOver reaches it in reading order and lands on the content on-screen.
+
+Verify with **Accessibility Inspector** (hover the placeholder → "Portal content
+region" group with a "Portal renderer" child, and no stray group under the
+window) or VoiceOver. Still your responsibility beyond this demo: the key-view
+(Tab) loop, and clamping the element's frame to the scroll viewport when clipped.
+
+This is itself a reason the reparenting/pooling approach often wins: there the
+content stays in a sensible tree location, so accessibility is correct while
+visible with no bridging.
 
 Use a portal when you need hard isolation (a continuous render loop, window-level
 separation, escaping clipping). For most "don't rebuild my expensive view" cases

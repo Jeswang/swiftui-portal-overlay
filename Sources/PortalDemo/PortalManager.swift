@@ -20,6 +20,9 @@ final class PortalManager: ObservableObject {
     @Published var lastFrame: CGRect = .zero
     @Published var clipped = false
 
+    /// Live a11y value for the content the placeholder adopts (see PortalAnchor).
+    var contentAccessibilityValue: String { renderer?.accessibilityStatus ?? "initializing" }
+
     private var overlay: NSView?
     private var renderer: ExpensiveRenderer?
 
@@ -84,6 +87,10 @@ final class PortalManager: ObservableObject {
             v.wantsLayer = true
             v.layer?.masksToBounds = true
             v.layer?.cornerRadius = 10
+            // a11y bridge: the overlay sits under NSThemeFrame, out of logical
+            // position. Hide it from accessibility; the placeholder exposes the
+            // content instead, in the right spot in the tree.
+            v.setAccessibilityElement(false)
             let r = ExpensiveRenderer()              // built exactly once, here, off the SwiftUI tree
             v.layer?.addSublayer(r.rootLayer)
             overlay = v
