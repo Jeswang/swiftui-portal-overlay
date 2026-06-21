@@ -39,13 +39,22 @@ final class PortalManager: ObservableObject {
     /// Position update. `windowRect` and `clip` are in the window's base
     /// coordinate system (from `view.convert(_, to: nil)`).
     func updateAnchor(id: String, windowRect: CGRect, window: NSWindow, clip: CGRect?) {
-        guard let content = window.contentView else { return }
-        ensureOverlay(in: window, content: content)
+        // Attach ABOVE SwiftUI's hosting content view by using the window's frame
+        // view (contentView.superview). SwiftUI owns and continuously reorders its
+        // own subtree, so a subview added there gets buried; the frame view doesn't.
+        guard let host = window.contentView?.superview ?? window.contentView else { return }
+        ensureOverlay(in: window, host: host)
         guard let overlay, let renderer else { return }
 
-        // window base coords -> contentView coords
-        let frameInContent = content.convert(windowRect, from: nil)
-        let visible = clip.map { frameInContent.intersection(content.convert($0, from: nil)) } ?? frameInContent
+        // window base coords -> host coords
+        let frameInContent = host.convert(windowRect, from: nil)
+        let visible = clip.map { frameInContent.intersection(host.convert($0, from: nil)) } ?? frameInContent
+
+        // Disable implicit CA animations: when the bottom edge clips we shift the
+        // content layer's origin every scroll tick, and the default 0.25s action
+        // would make it visibly "bounce"/swim. Position must be instantaneous.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
 
         overlay.isHidden = visible.isEmpty
         overlay.frame = visible.isEmpty ? frameInContent : visible
@@ -58,6 +67,8 @@ final class PortalManager: ObservableObject {
                                           width: frameInContent.width, height: frameInContent.height)
         renderer.layout()
 
+        CATransaction.commit()
+
         let didClip = !visible.equalTo(frameInContent)
         DispatchQueue.main.async {
             self.lastFrame = windowRect
@@ -67,27 +78,25 @@ final class PortalManager: ObservableObject {
 
     // MARK: - Overlay management
 
-    private func ensureOverlay(in window: NSWindow, content: NSView) {
+    private func ensureOverlay(in window: NSWindow, host: NSView) {
         if overlay == nil {
-            let host = NSView(frame: .zero)
-            host.wantsLayer = true
-            host.layer?.masksToBounds = true
-            host.layer?.cornerRadius = 10
+            let v = NSView(frame: .zero)
+            v.wantsLayer = true
+            v.layer?.masksToBounds = true
+            v.layer?.cornerRadius = 10
             let r = ExpensiveRenderer()              // built exactly once, here, off the SwiftUI tree
-            host.layer?.addSublayer(r.rootLayer)
-            overlay = host
+            v.layer?.addSublayer(r.rootLayer)
+            overlay = v
             renderer = r
             DispatchQueue.main.async { self.rendererBuilds = ExpensiveRenderer.creationCount }
         }
         guard let overlay else { return }
-        // Attach above the SwiftUI hosting view. This happens once; the overlay
-        // then lives in the window for good (so the count below stays 0).
-        if overlay.window !== window {
+        // Attach to the frame view, above SwiftUI. Happens once; the overlay then
+        // lives in the window for good (so the count below stays 0).
+        if overlay.superview !== host {
             if overlay.window != nil { DispatchQueue.main.async { self.overlayLeftWindow += 1 } }
             overlay.removeFromSuperview()
-            content.addSubview(overlay, positioned: .above, relativeTo: nil)
-        } else if overlay.superview == nil {
-            content.addSubview(overlay, positioned: .above, relativeTo: nil)
+            host.addSubview(overlay, positioned: .above, relativeTo: nil)
         }
     }
 }
